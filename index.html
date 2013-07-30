@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Setting up CarrierWave and MiniMagick in Sinatra by cpilegard</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Setting up CarrierWave and MiniMagick in Sinatra</h1>
+        <p></p>
+
+
+        <p class="view"><a href="https://github.com/cpilegard">View My GitHub Profile</a></p>
+
+      </header>
+      <section>
+        <h3>
+<a name="setting-up-carrierwave-and-minimagick-in-sinatra" class="anchor" href="#setting-up-carrierwave-and-minimagick-in-sinatra"><span class="octicon octicon-link"></span></a>Setting up CarrierWave and MiniMagick in Sinatra</h3>
+
+<p>Our challenge today was based around file uploading and manipulation, and configuring our Sinatra environment to work with these two external gems. After a whole lot of needless error-hunting, here is how I got it to work with our given Sinatra skeleton.</p>
+
+<p>First, we add the gems to the gemfile...</p>
+
+<pre><code>#Gemfile
+gem 'carrierwave'
+gem 'mini_magick'
+</code></pre>
+
+<p>And the environment.</p>
+
+<pre><code>#environment.rb
+require 'carrierwave'
+require 'carrierwave/orm/activerecord'
+require 'mini_magick'
+</code></pre>
+
+<p>Let's include a place in our photos table to store the file: perhaps the filename, perhaps the path, either way we know it should be a string.</p>
+
+<pre><code>#create_photos_migration
+t.string :file
+</code></pre>
+
+<p>Next, to use the carrierwave gem we need to set up a class where we call it from. It doesn't really fit in to a Model/View/Controller folder, so I stashed it in a folder called uploader as the documentation (sort of) suggests.</p>
+
+<pre><code>#/uploader/uploader.rb
+class Uploader &lt; CarrierWave::Uploader::Base
+  storage :file
+
+  def store_dir
+    'images'
+  end
+end
+</code></pre>
+
+<p>A few things to note above. We define a class called Uploader (it could be anything) that inherits the functionality of the gem. We set the :storage attribute to reference the :file column in our photos table, and to not clutter our directories, we can set a store_dir method to save files in a new directory called 'images'. The above is further documented in the carrierwave repo.</p>
+
+<p>Another thing we'll need to do now is add the files in that uploader folder to our environment. And while we're back in here, set the root of our uploader to work out of our public directory.</p>
+
+<pre><code>#environment.rb
+Dir[APP_ROOT.join('app', 'uploaders', '*.rb')].each { |file| require file }
+CarrierWave.configure do |config|
+    config.root = APP_ROOT + 'public/'
+end
+</code></pre>
+
+<p>Let's go to our Photo model and tell it...</p>
+
+<pre><code>#photo.rb
+class Photo &lt; ActiveRecord::Base
+    mount_uploader :file, Uploader 
+end
+</code></pre>
+
+<p>...which basically means when we try to write to the :file column, we do the method 'mount_uploader' instead, calling the Uploader class we wrote up above.</p>
+
+<p>Now, in our controller, we can create a new photo, write the filename (and subsequently call the mounted methods), then save it.</p>
+
+<pre><code>#index.rb
+post '/albums/:id' do
+    photo = current_user.albums.find(params[:id]).photos.new()
+    photo.file = params[:image]
+    photo.save
+end
+</code></pre>
+
+<p>On success, this will write the filename to :file, create a temp directory you don't really need to worry about, and save the image file to /public/images/. Sweet.</p>
+
+<p>Also, when we call &lt;%= photo.file %&gt;, the full path will be displayed (/public/images/filename.ext) instead of what is just written to the :file column. Super sweet.</p>
+
+<p>We can simply include MiniMagick in our Uploader class, and call various methods from that, like resizing the image to fit in a 200 x 200 box.</p>
+
+<pre><code>#uploader.rb
+class Uploader &lt; CarrierWave::Uploader::Base
+    include CarrierWave::MiniMagick
+    process :resize_to_fill =&gt; [200, 200]
+    ...
+end
+</code></pre>
+
+<p>Lastly, it turns out that MiniMagick is a wrapper for ImageMagick. I'm not sure if the DBC computers have it installed, but I had to install it on my machine before it would work, a la <code>brew install ImageMagick</code> and restart the server.</p>
+
+<p>That should do it, happy uploading. (Let me know if there are any errors.)</p>
+      </section>
+      <footer>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
